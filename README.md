@@ -11,6 +11,8 @@ This project explores NYC rat complaints through geographic, temporal, and compl
 
 ![Interactive map of NYC rat reports](figures/nyc_rats_map.png)
 
+[Open the interactive NYC rat complaint map](figures/nyc_rats_interactive.html)
+
 ## Project 02: Weather and Florida Lakes
 
 This project examines seasonal weather patterns in Atlanta and the spatial distribution of lakes across Florida. It combines interactive time-series data, calendar heatmaps, model visualization, and spatial analysis.
