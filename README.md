@@ -1,43 +1,41 @@
 # Data Visualization and Reproducible Research
 
-> Firstname Lastname. 
+> Henry Marsh. 
 
 
-The following is a sample of products created during the _"Data Visualization and Reproducible Research"_ course.
+This repository contains three projects completed during Data Visualization and Reproducible Research. Together, they demonstrate exploratory analysis, interactive visualization, spatial data, model visualization, accessibility, and reproducible research.
 
+## Project 01: NYC Rat Complaints
 
-## Project 01
+This project explores NYC rat complaints through geographic, temporal, and complaint-level patterns. The interactive maps allow the reader to examine individual complaint locations and larger areas of complaint density.
 
-In the `project_01/` folder you can find... _[add short description of your revised project here]_
+Requirements addressed:
+- Interactive visualization: Leaflet complaint and density maps
+- Accessibility: Colorblind-safe palettes and alt text
+- Redesign: Borough complaint chart before and after
 
-**Sample data visualization:** 
+![Interactive map of NYC rat complaints](figures/rats_map.png)
 
-_[include your favorite visualization from this project here]_
-<img src="https://raw.githubusercontent.com/aalhamadani/dataviz_final_project/main/figures/echarts.png" width="70%" height="70%">
+## Project 02: Weather and Florida Lakes
 
+This project examines seasonal weather patterns in Atlanta and the spatial distribution of lakes across Florida. It combines interactive time-series data, calendar heatmaps, model visualization, and spatial analysis.
 
-## Project 02
+Requirements addressed:
+- Interactive visualization: Plotly temperature chart
+- Accessibility: Colorblind-safe colors and alt text
+- Redesign: Daily temperature chart before and after
 
-In this project, I explored ... _[short description of your revised project goes here]_ Find the code and report in the `project_02/` folder.
+![Atlanta daily temperature visualization](figures/weather_chart.png)
 
-**Sample data visualization:** 
+## Project 03: Tampa Weather and Concrete Strength
 
-_[include your favorite visualization from this project here]_
-<img src="https://raw.githubusercontent.com/aalhamadani/dataviz_final_project/main/figures/fl_higher_ed.png" width="80%" height="80%">
+This project examines monthly temperature and precipitation patterns in Tampa during 2022, followed by an exploration of the variables connected to concrete strength.
 
-(you can place your figures in the `figures/` folder and use the `![](path_to_picture)` option to add the pictures here)
+Requirements addressed:
+- Interactive visualization: Concrete strength scatterplot
+- Accessibility: Viridis palettes and alt text
+- Redesign: Concrete scatterplot before and after
 
+## Moving Forward
 
-## Project 03
-
-In this project, I explored ... _[short description of the data visualizations you for this part of the project produced goes here]_
-
-**Sample data visualization:** 
-
-_[include your favorite visualization from this project here]_
-<img src="https://raw.githubusercontent.com/aalhamadani/dataviz_final_project/main/figures/concrete_density.png" width="80%" height="80%">
-
-
-### Moving Forward
-
-_Please add here a short reflection on what you learned and what you plan to continue exploring in terms of data visualization, data storytelling, reproducible research, and/or related topics._
+This course helped me better understand how visualization can make complex data easier to read without removing the detail behind it. Moving forward, I want to continue using interactive and spatial visualizations to make data exploration more useful and engaging.
