@@ -14,7 +14,7 @@ Requirements addressed:
 - Accessibility: Colorblind-safe palettes and alt text
 - Redesign: Borough complaint chart before and after
 
-![Interactive map of NYC rat complaints](figures/nyc_rats_interactive.html)
+![Interactive map of NYC rat reports](figures/nyc_rats_interactive.html)
 
 ## Project 02: Weather and Florida Lakes
 
