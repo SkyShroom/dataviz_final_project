@@ -1,0 +1,617 @@
+---
+title: "Marsh_dataviz_Mini_Project_1_Late"
+author: "Henry Marsh"
+date: "2026-06-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+# Mini-Project 1
+
+If you want to go straight to parts 6 and 7 on the instruction, please scroll to the bottom or navigate on the left to there.
+
+# Packages
+
+```{r packages}
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(scales)
+library(viridis)
+library(plotly)
+library(leaflet)
+library(leaflet.extras)
+library(DT)
+```
+
+# Data Loading
+
+```{r load-data}
+rats <- "https://data.cityofnewyork.us/resource/gj6a-xguv.csv?$limit=50000&$order=created_date%20DESC"
+
+rats <- read_csv(rats, show_col_types = FALSE) %>%
+  clean_names()
+
+glimpse(rats)
+```
+
+# Data Cleaning and Prep
+
+```{r}
+rats_clean <- rats %>%
+  mutate(
+    created_date = ymd_hms(created_date, quiet = TRUE),
+    closed_date = ymd_hms(closed_date, quiet = TRUE),
+
+    created_day = as_date(created_date),
+    created_month = floor_date(created_date, "month"),
+    created_year = year(created_date),
+    created_hour = hour(created_date),
+
+    sighting_year = year(created_date),
+    sighting_month_num = month(created_date),
+    sighting_month = factor(
+      month.name[sighting_month_num],
+      levels = month.name
+    ),
+    sighting_day = day(created_date),
+    sighting_weekday = factor(
+      wday(created_date, label = TRUE, abbr = FALSE),
+      levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    ),
+
+    borough = str_to_title(borough),
+    borough = na_if(borough, "Unspecified"),
+
+    incident_zip = as.character(incident_zip),
+    location_type = str_to_title(location_type),
+    descriptor = str_to_title(descriptor),
+    status = str_to_title(status),
+
+    response_days = as.numeric(difftime(closed_date, created_date, units = "days"))
+  )
+
+rats_geo <- rats_clean %>%
+  filter(
+    !is.na(latitude),
+    !is.na(longitude),
+    latitude >= 40,
+    latitude <= 41,
+    longitude >= -75,
+    longitude <= -73
+  )
+
+glimpse(rats_clean)
+```
+
+# summary 
+
+```{r}
+summary_table <- tibble(
+  measure = c(
+    "Total records",
+    "Unique complaint IDs",
+    "Records with latitude/longitude",
+    "Unique boroughs",
+    "Unique ZIP codes",
+    "Earliest report date",
+    "Latest report date"
+  ),
+  value = c(
+    nrow(rats_clean),
+    n_distinct(rats_clean$unique_key),
+    nrow(rats_clean %>% filter(!is.na(latitude), !is.na(longitude))),
+    n_distinct(rats_clean$borough, na.rm = TRUE),
+    n_distinct(rats_clean$incident_zip, na.rm = TRUE),
+    as.character(min(rats_clean$created_day, na.rm = TRUE)),
+    as.character(max(rats_clean$created_day, na.rm = TRUE))
+  )
+)
+
+summary_table
+```
+# Geographic Filter
+
+```{r}
+rats_geo <- rats_clean %>%
+  filter(
+    !is.na(latitude),
+    !is.na(longitude))
+
+glimpse(rats_geo)
+```
+
+# Exploratory Data Analysis
+
+```{r eda-theme}
+eda_theme <- theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.title.position = "plot",
+    panel.grid.minor = element_blank()
+  )
+```
+
+## Data Overview
+
+```{r eda-summary}
+summary_table <- tibble(
+  measure = c(
+    "Total records",
+    "Unique complaint IDs",
+    "Duplicate complaint IDs",
+    "Records with coordinates",
+    "Unique boroughs",
+    "Unique ZIP codes",
+    "Earliest report date",
+    "Latest report date"
+  ),
+  value = c(
+    nrow(rats_clean),
+    n_distinct(rats_clean$unique_key),
+    nrow(rats_clean) - n_distinct(rats_clean$unique_key),
+    nrow(rats_clean %>% filter(!is.na(latitude), !is.na(longitude))),
+    n_distinct(rats_clean$borough, na.rm = TRUE),
+    n_distinct(rats_clean$incident_zip, na.rm = TRUE),
+    as.character(min(rats_clean$created_day, na.rm = TRUE)),
+    as.character(max(rats_clean$created_day, na.rm = TRUE))
+  )
+)
+
+summary_table
+```
+
+## Missing Values
+
+```{r eda-missing}
+missing_summary <- rats_clean %>%
+  select(
+    unique_key,
+    created_date,
+    closed_date,
+    borough,
+    incident_zip,
+    location_type,
+    descriptor,
+    status,
+    latitude,
+    longitude,
+    response_days
+  ) %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = "missing_count"
+  ) %>%
+  mutate(
+    missing_percent = round(missing_count / nrow(rats_clean) * 100, 2)
+  ) %>%
+  arrange(desc(missing_count))
+
+missing_summary
+```
+
+```{r eda-missing-plot}
+missing_summary %>%
+  filter(missing_count > 0) %>%
+  mutate(variable = fct_reorder(variable, missing_count)) %>%
+  ggplot(aes(x = variable, y = missing_count)) +
+  geom_col(width = 0.75) +
+  coord_flip() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Missing values by field",
+    x = NULL,
+    y = "Missing values"
+  ) +
+  eda_theme +
+  theme(panel.grid.major.y = element_blank())
+```
+
+## Borough Distribution
+
+```{r eda-borough}
+borough_counts <- rats_clean %>%
+  filter(!is.na(borough)) %>%
+  count(borough, sort = TRUE) %>%
+  mutate(
+    percent_share = n / sum(n),
+    borough = fct_reorder(borough, n)
+  )
+
+borough_counts %>%
+  ggplot(aes(x = borough, y = n)) +
+  geom_col(width = 0.75) +
+  coord_flip() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Rodent complaint records by borough",
+    x = NULL,
+    y = "Number of records"
+  ) +
+  eda_theme +
+  theme(panel.grid.major.y = element_blank())
+
+borough_counts %>%
+  arrange(desc(n)) %>%
+  mutate(percent_share = percent(percent_share, accuracy = 0.1))
+```
+
+making sure no reported areas are outside the range given
+
+## Top ZIP Codes
+
+```{r eda-zips}
+top_zips <- rats_clean %>%
+  filter(!is.na(incident_zip), incident_zip != "NA") %>%
+  count(incident_zip, sort = TRUE) %>%
+  slice_max(n, n = 15) %>%
+  mutate(incident_zip = fct_reorder(incident_zip, n))
+
+ggplot(top_zips, aes(x = incident_zip, y = n)) +
+  geom_segment(
+    aes(x = incident_zip, xend = incident_zip, y = 0, yend = n),
+    linewidth = 0.8
+  ) +
+  geom_point(size = 4) +
+  coord_flip() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Top ZIP codes by rodent complaint records",
+    x = "ZIP code",
+    y = "Number of records"
+  ) +
+  eda_theme +
+  theme(panel.grid.major.y = element_blank())
+```
+
+ZIP codes provide a little more detailed view than boroughs, I was doing this to see how different area density is within the area.
+
+## Location Type
+
+```{r eda-location-type}
+location_counts <- rats_clean %>%
+  filter(!is.na(location_type), location_type != "Unspecified") %>%
+  count(location_type, sort = TRUE) %>%
+  slice_max(n, n = 12) %>%
+  mutate(location_type = fct_reorder(location_type, n))
+
+ggplot(location_counts, aes(x = location_type, y = n)) +
+  geom_col(width = 0.75) +
+  coord_flip() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Most common location types",
+    x = NULL,
+    y = "Number of records"
+  ) +
+  eda_theme +
+  theme(panel.grid.major.y = element_blank())
+```
+
+Location type for context as to where complaints are being reported.
+
+## Complaint Status
+
+```{r eda-status}
+status_counts <- rats_clean %>%
+  filter(!is.na(status)) %>%
+  count(status, sort = TRUE) %>%
+  mutate(
+    percent_share = n / sum(n),
+    status = fct_reorder(status, n)
+  )
+
+ggplot(status_counts, aes(x = status, y = n)) +
+  geom_col(width = 0.75) +
+  coord_flip() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Complaint status",
+    x = NULL,
+    y = "Number of records"
+  ) +
+  eda_theme +
+  theme(panel.grid.major.y = element_blank())
+
+status_counts %>%
+  arrange(desc(n)) %>%
+  mutate(percent_share = percent(percent_share, accuracy = 0.1))
+```
+
+Lets me know if some records do not have response times yet, and thus need to be excluded pending on graph.
+
+## Time Patterns
+
+```{r eda-daily-trend}
+daily_counts <- rats_clean %>%
+  filter(!is.na(created_day)) %>%
+  count(created_day)
+
+ggplot(daily_counts, aes(x = created_day, y = n)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Daily rodent complaint records",
+    x = "Date",
+    y = "Number of records"
+  ) +
+  eda_theme
+```
+
+```{r eda-month}
+month_counts <- rats_clean %>%
+  filter(!is.na(sighting_month)) %>%
+  count(sighting_month)
+
+ggplot(month_counts, aes(x = sighting_month, y = n)) +
+  geom_col(width = 0.75) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Rodent complaint records by month",
+    x = "Month",
+    y = "Number of records"
+  ) +
+  eda_theme +
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    panel.grid.major.x = element_blank()
+  )
+```
+
+```{r eda-weekday}
+weekday_counts <- rats_clean %>%
+  filter(!is.na(sighting_weekday)) %>%
+  count(sighting_weekday)
+
+ggplot(weekday_counts, aes(x = sighting_weekday, y = n)) +
+  geom_col(width = 0.75) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Rodent complaint records by weekday",
+    x = "Weekday",
+    y = "Number of records"
+  ) +
+  eda_theme +
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    panel.grid.major.x = element_blank()
+  )
+```
+
+```{r eda-hour}
+hour_counts <- rats_clean %>%
+  filter(!is.na(created_hour)) %>%
+  count(created_hour) %>%
+  complete(created_hour = 0:23, fill = list(n = 0))
+
+ggplot(hour_counts, aes(x = created_hour, y = n)) +
+  geom_col(width = 0.8) +
+  scale_x_continuous(breaks = 0:23) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Rodent complaint records by hour",
+    x = "Hour of day",
+    y = "Number of records"
+  ) +
+  eda_theme +
+  theme(panel.grid.major.x = element_blank())
+```
+
+Unsuprisingly we see that the peek complaint times mirror that of 9 am to 6 pm.
+
+## Month and Weekday Heatmap
+
+```{r eda-heatmap}
+month_weekday <- rats_clean %>%
+  filter(!is.na(sighting_month), !is.na(sighting_weekday)) %>%
+  count(sighting_month, sighting_weekday)
+
+ggplot(month_weekday, aes(x = sighting_weekday, y = sighting_month, fill = n)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  scale_fill_viridis_c(labels = comma) +
+  labs(
+    title = "Rodent complaint records by month and weekday",
+    x = "Weekday",
+    y = "Month",
+    fill = "Records"
+  ) +
+  eda_theme +
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    panel.grid = element_blank()
+  )
+```
+
+The heatmap makes it easier to compare two time categories at once and see which combinations have the most reports. Thus allowing us to see very interesting relationships.
+
+## Response Time
+
+```{r eda-response-summary}
+response_summary <- rats_clean %>%
+  filter(!is.na(response_days), response_days >= 0) %>%
+  summarise(
+    completed_reports = n(),
+    min_days = min(response_days, na.rm = TRUE),
+    median_days = median(response_days, na.rm = TRUE),
+    mean_days = mean(response_days, na.rm = TRUE),
+    max_days = max(response_days, na.rm = TRUE)
+  )
+
+response_summary
+```
+
+
+## Spatial Pattern
+
+```{r eda-coordinates}
+coordinate_summary <- rats_clean %>%
+  filter(!is.na(latitude), !is.na(longitude)) %>%
+  summarise(
+    records_with_coordinates = n(),
+    min_latitude = min(latitude, na.rm = TRUE),
+    max_latitude = max(latitude, na.rm = TRUE),
+    min_longitude = min(longitude, na.rm = TRUE),
+    max_longitude = max(longitude, na.rm = TRUE)
+  )
+
+coordinate_summary
+```
+
+```{r eda-spatial-scatter}
+rats_coordinates <- rats_clean %>%
+  filter(!is.na(latitude), !is.na(longitude))
+
+ggplot(rats_coordinates, aes(x = longitude, y = latitude)) +
+  geom_point(alpha = 0.25, size = 1) +
+  coord_quickmap() +
+  labs(
+    title = "Spatial distribution of rodent complaint records",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  eda_theme +
+  theme(panel.grid = element_blank())
+```
+
+```{r eda-spatial-density}
+ggplot(rats_coordinates, aes(x = longitude, y = latitude)) +
+  stat_density_2d(
+    aes(fill = after_stat(level)),
+    geom = "polygon",
+    alpha = 0.75
+  ) +
+  geom_point(alpha = 0.08, size = 0.5) +
+  scale_fill_viridis_c() +
+  coord_quickmap() +
+  labs(
+    title = "Density of rodent complaint records",
+    x = "Longitude",
+    y = "Latitude",
+    fill = "Density"
+  ) +
+  eda_theme +
+  theme(panel.grid = element_blank())
+```
+
+## Density Heatmap on NYC Map
+
+```{r nyc-density-map}
+rats_coordinates <- rats_clean %>%
+  filter(!is.na(latitude), !is.na(longitude))
+
+leaflet(rats_coordinates) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  setView(lng = -73.95, lat = 40.72, zoom = 11) %>%
+  addHeatmap(
+    lng = ~longitude,
+    lat = ~latitude,
+    blur = 20,
+    radius = 15,
+    max = 0.05
+  )
+```
+
+# EDA Conclusion And Highlights
+
+
+# Part 6 and 7
+
+## Overview
+
+### Part A: What were the original charts you planned to create for this assignments?
+
+I did not really have a strict set of charts in mind at first, which is why the EDA became so large from me just exploring the data and seeing what it could show. Originally, I wanted an interactive map with different-sized cartoon rats around NYC, but I quickly realized that was outside the scope of the assignment and probably not the most professional choice.
+
+### Part B: What story could you tell with your plots?
+
+I wanted the three plots below to build upon each other. The location-type chart first gives some context for where most complaints are coming from, while the month and weekday heatmap shows when people are making these reports. Finally, the density map brings everything together by showing where the reports are concentrated within Brooklyn.
+
+Together, these plots show that rat complaints are not spread evenly across location, time, or setting. Going past this assignment, I would like to add an interactive legend that could filter the map by location type, day, month, or year to better show how these patterns change.
+
+#### Most Common Location
+
+```{r Final-location-type}
+location_counts <- rats_clean %>%
+  filter(!is.na(location_type), location_type != "Unspecified") %>%
+  count(location_type, sort = TRUE) %>%
+  slice_max(n, n = 12) %>%
+  mutate(location_type = fct_reorder(location_type, n))
+
+ggplot(location_counts, aes(x = location_type, y = n)) +
+  geom_col(width = 0.75) +
+  coord_flip() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Most common location types",
+    x = NULL,
+    y = "Number of records"
+  ) +
+  eda_theme +
+  theme(panel.grid.major.y = element_blank())
+```
+
+
+
+#### Month and Weekday Heatmap
+
+```{r Final-heatmap}
+month_weekday <- rats_clean %>%
+  filter(!is.na(sighting_month), !is.na(sighting_weekday)) %>%
+  count(sighting_month, sighting_weekday)
+
+ggplot(month_weekday, aes(x = sighting_weekday, y = sighting_month, fill = n)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  scale_fill_viridis_c(labels = comma) +
+  labs(
+    title = "Rodent complaint records by month and weekday",
+    x = "Weekday",
+    y = "Month",
+    fill = "Records"
+  ) +
+  eda_theme +
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    panel.grid = element_blank()
+  )
+```
+
+
+
+#### Interactive Density Heatmap on NYC Map
+
+Do zoom in for this part, i could not get the zoom right.
+
+```{r Final-nyc-density-map}
+rats_coordinates <- rats_clean %>%
+  filter(!is.na(latitude), !is.na(longitude))
+
+leaflet(rats_coordinates) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  setView(lng = -73.95, lat = 40.72, zoom = 11) %>%
+  addHeatmap(
+    lng = ~longitude,
+    lat = ~latitude,
+    blur = 20,
+    radius = 15,
+    max = 0.05
+  )
+```
+
+### Part C: How did you apply the principles of data visualizations and design for this assignment?
+
+I tried to use the type of visualization that made the most sense for each part of the data. The horizontal bar chart makes the location types easier to compare, the heatmap shows the relationship between month and weekday, and the density map avoids the clutter that would come from plotting every complaint as an individual point.
+
+I also kept the titles and labels direct, used a consistent theme, and tried to build context like a storyboard to give the reader a greater sense of context than a single graph or reading. More so following the "show, don't tell" line of thought for this one.
+
+#### AI USE Statement:
+I used AI only to improve sentence structure and correct grammatical errors. The analysis, code, interpretations, and conclusions are my own work.
