@@ -1,0 +1,406 @@
+---
+title: "Data Visualization - Mini-Project 2"
+author: "Henry Marsh - hmarsh0311@floridapoly.edu"
+date: "2026-06-20"
+output:
+  html_document:
+    self_contained: true
+    theme: flatly
+    toc: true
+    toc_float: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(plotly)
+library(sf)
+library(ggrepel)
+library(broom)
+library(scales)
+
+theme_set(theme_minimal(base_size = 13))
+```
+
+
+
+# Introduction
+
+The goal of this project was to create a small but complete data visualization report using more than one type of data and more than one visualization approach. I used two datasets for this project: the Atlanta daily weather dataset from 2019 and the Florida Lakes spatial dataset. I separated the report into two main sections because the datasets answer different kinds of questions. The weather dataset is time-based and numeric, while the Florida Lakes dataset is spatial and geographic.
+
+For the weather section, I focused on how daily temperature changed across the year and how daily low temperature relates to daily high temperature. For the spatial section, I used the Florida Lakes shapefile to show where lakes are located across Florida and how county boundaries help provide geographic context. Together, these datasets let me practice different visualization methods, including an interactive plot, a calendar heatmap, a spatial map, and a linear model visualization.
+
+# Section 1: Atlanta Weather Data
+
+The first part of the project uses the Atlanta daily weather dataset. I chose this dataset because weather data is easy to understand, but it still gives enough room for stronger visual analysis. The dataset includes daily weather measurements such as high temperature, low temperature, precipitation, humidity, cloud cover, and wind speed.
+
+Before making the plots, I cleaned the data by converting the time variable into a date column. I also created new variables such as month, month number, day of year, and temperature range. These extra variables made the data easier to group, plot, and model.
+
+## Load Data 
+
+```{r}
+weather <- read_csv("C:/Users/Henry/Desktop/dataviz_mini-project_02/data/atl-weather.csv")
+
+glimpse(weather)
+```
+
+## Cleaning of Data
+
+```{r}
+weather_clean <- weather %>%
+  mutate(
+    date = as.Date(time),
+    month = month(date, label = TRUE, abbr = TRUE),
+    month_num = month(date),
+    day_of_year = yday(date),
+    tmax = temperatureHigh,
+    tmin = temperatureLow,
+    prcp = precipIntensity,
+    temp_range = tmax - tmin,
+    rain_day = if_else(prcp > 0, "Rain", "No rain")
+  ) %>%
+  drop_na(date, tmax, tmin, prcp)
+
+glimpse(weather_clean)
+```
+
+## Summary
+
+```{r}
+weather_summary <- weather_clean %>%
+  summarise(
+    days = n(),
+    avg_high_temp = mean(tmax, na.rm = TRUE),
+    avg_low_temp = mean(tmin, na.rm = TRUE),
+    avg_temp_range = mean(temp_range, na.rm = TRUE),
+    total_rainfall = sum(prcp, na.rm = TRUE),
+    rain_days = sum(prcp > 0, na.rm = TRUE),
+    hottest_day = max(tmax, na.rm = TRUE),
+    coldest_day = min(tmin, na.rm = TRUE)
+  )
+
+weather_summary
+```
+
+# Visualization 1: Interactive Temperature Line Chart
+
+```{r interactive-temperature-plot, fig.width=11, fig.height=6}
+# Visualization 1: Interactive Temperature Trend
+
+temp_long <- weather_clean %>%
+  select(date, tmax, tmin) %>%
+  pivot_longer(
+    cols = c(tmax, tmin),
+    names_to = "temperature_type",
+    values_to = "temperature"
+  ) %>%
+  mutate(
+    temperature_type = recode(
+      temperature_type,
+      tmax = "Daily High",
+      tmin = "Daily Low"
+    )
+  )
+
+p_temp <- ggplot(
+  temp_long,
+  aes(
+    x = date,
+    y = temperature,
+    color = temperature_type,
+    group = temperature_type,
+    text = paste(
+      "Date:", date,
+      "<br>Type:", temperature_type,
+      "<br>Temperature:", round(temperature, 1)
+    )
+  )
+) +
+  geom_line(linewidth = 1.1, alpha = 0.9) +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  labs(
+    title = "Atlanta Daily Temperatures in 2019",
+    subtitle = "Daily highs and lows rise into summer, then fall back down toward winter",
+    x = NULL,
+    y = "Temperature",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+  plot.title = element_text(face = "bold", size = 16),
+  plot.subtitle = element_text(size = 11),
+  legend.position = "none",
+  panel.grid.minor = element_blank(),
+  plot.margin = margin(20, 25, 25, 25)
+)
+
+ggplotly(p_temp, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Atlanta Daily Temperatures in 2019",
+        "<br><sup>Daily highs and lows rise into summer, then fall back down toward winter</sup>"
+      ),
+      x = 0.05
+    ),
+    legend = list(
+      orientation = "h",
+      x = 0.05,
+      y = -0.18
+    ),
+    margin = list(
+      t = 95,
+      b = 95,
+      l = 75,
+      r = 40
+    )
+  )
+```
+### Analysis of Viz 1
+
+The first visualization shows daily high and daily low temperatures across 2019. I used a line chart because the data is time-based, and a line chart makes it easier to see how temperature changes over the year. I also made the chart interactive so the viewer can inspect the temperature values more closely.
+
+The main pattern is that temperatures rise from winter into spring, stay high through summer and early fall, and then drop again near the end of the year. The daily high and daily low temperatures move together for most of the year, which shows that the pattern is seasonal and not random. The gap between the two lines also gives a sense of the daily temperature range.
+
+This chart works well as the interactive visualization because it gives the viewer access to more detail without overcrowding the plot. Instead of labeling every point, the interactivity allows the reader to explore exact values when needed, especially with the double tooltips to show explicit differences.
+
+# Visualization 2: Calendar Heatmap
+
+```{r calendar-heatmap, fig.width=11, fig.height=7}
+
+# So this turned the normal heat map into an almost calender type of view that i thought i was really cool way to analyze the changing temperatures, 
+
+calendar_weather <- weather_clean %>%
+  mutate(
+    week = isoweek(date),
+    weekday = wday(date, label = TRUE, abbr = TRUE, week_start = 1)
+  )
+
+ggplot(calendar_weather, aes(x = week, y = fct_rev(weekday), fill = tmax)) +
+  geom_tile(color = "white", linewidth = 0.25) +
+  facet_wrap(~ month, scales = "free_x", nrow = 3) +
+  scale_fill_gradient(
+    low = "#d7ecff",
+    high = "#b30000"
+  ) +
+  labs(
+    title = "Daily High Temperatures as a Calendar Heatmap",
+    subtitle = "Each tile represents one day in 2019, with darker red showing hotter daily highs",
+    x = "Week of Year",
+    y = NULL,
+    fill = "Daily High"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    strip.text = element_text(face = "bold", size = 11),
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 9),
+    legend.position = "top",
+    plot.margin = margin(15, 20, 15, 20)
+  )
+```
+
+### Analysis of Viz 2
+
+The second weather visualization is a calendar heatmap of daily high temperature. Each tile represents one day, and the color shows how hot that day was. I used this chart because I wanted one visualization to have more of an R Graph Gallery style instead of only using standard line or bar charts.
+
+This chart shows the same seasonal pattern as the line chart, but in a different way. The warmer months, especially June through September, have more dark red tiles. The cooler months, such as January, February, November, and December, have lighter tiles. This makes the seasonal pattern easy to scan visually.
+
+One limitation is that the heatmap is better for seeing patterns than reading exact values. However, it is useful because it shows the full year at once while still keeping the daily structure of the data.
+
+# Visualization 3: Weather Model Visualization
+
+```{r weather-linear-model-scatter, message=FALSE, warning=FALSE, fig.width=9.5, fig.height=6.5}
+library(tidyverse)
+library(broom)
+library(scales)
+
+
+weather_model_data <- weather_clean %>%
+  select(date, tmax, tmin, month) %>%
+  drop_na(tmax, tmin)
+
+# Basic Linear model
+weather_lm <- lm(tmax ~ tmin, data = weather_model_data)
+
+summary(weather_lm)
+
+model_stats <- glance(weather_lm)
+
+model_label <- paste0(
+  "R-squared: ", round(model_stats$r.squared, 3),
+  "\nSlope: ", round(coef(weather_lm)[2], 3)
+)
+
+ggplot(weather_model_data, aes(x = tmin, y = tmax)) +
+  geom_point(
+    aes(color = month),
+    alpha = 0.65,
+    size = 2.4
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    linewidth = 1.2,
+    color = "#D95F02",
+    fill = "#FDD0A2",
+    alpha = 0.25
+  ) +
+  annotate(
+    "label",
+    x = min(weather_model_data$tmin, na.rm = TRUE),
+    y = max(weather_model_data$tmax, na.rm = TRUE),
+    label = model_label,
+    hjust = 0,
+    size = 4,
+    fill = "white",
+    color = "gray20"
+  ) +
+  labs(
+    title = "Model Visualization: Daily Low Temperature vs Daily High Temperature",
+    subtitle = "The linear model shows how strongly daily lows are related to daily highs",
+    x = "Daily Low Temperature",
+    y = "Daily High Temperature",
+    color = "Month",
+    caption = "Model: daily high temperature predicted using daily low temperature"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    legend.position = "right",
+    panel.grid.minor = element_blank(),
+    plot.caption = element_text(size = 9, color = "gray40"),
+    plot.margin = margin(15, 20, 15, 20)
+  )
+```
+
+### Analysis of Viz 3
+
+The model visualization compares daily low temperature to daily high temperature. I used a scatter plot with a fitted linear model line because the assignment required a model visualization, and this relationship is easy to interpret.
+
+The model has an R-squared value of 0.847, meaning that daily low temperature explains about 84.7% of the variation in daily high temperature. The slope is 0.988, which means that for every 1 degree increase in daily low temperature, the predicted daily high temperature increases by almost 1 degree. This shows a strong positive relationship.
+
+The monthly coloring adds more context to the model. Colder months like January, February, and December are mostly found in the lower-left part of the chart, while warmer months like June, July, August, and September are mostly found in the upper-right. This connects the model back to the seasonal pattern shown in the first two weather visualizations.
+
+There is still some spread around the regression line, especially in the middle temperature range. This means daily low temperature is a strong predictor, but it does not explain everything. Other factors such as cloud cover, rainfall, humidity, and wind may also affect daily high temperature.
+
+# Section 2: Florida Lakes Spatial Data
+
+The second part of the project uses the Florida Lakes shapefile. This dataset is different from the weather dataset because it contains geometry instead of only regular table values. Each lake is represented as a spatial feature, which makes it appropriate for the required spatial visualization.
+
+At first, the lake map was harder to interpret because the lakes appeared without much geographic context. To improve this, I added Florida county boundaries underneath the lake layer. This made the map easier to read because the viewer can now see where the lakes are located across the state.
+
+# Visualization 4: Spatial Visualization of Florida Lakes
+
+```{r spatial-florida-lakes, message=FALSE, warning=FALSE, fig.width=9, fig.height=8}
+library(sf)
+library(tidyverse)
+library(scales)
+
+# This is the spatial plot required by the assignment. Since the Atlanta weather data does not have coordinates, I am using the Florida_Lakes shapefile as the spatial dataset.
+
+# The shapefile is already unzipped inside:
+lake_file <- list.files(
+  "C:/Users/Henry/Desktop/dataviz_mini-project_02/data/Florida_Lakes",
+  pattern = "\\.shp$",
+  full.names = TRUE
+)
+
+# Read the shapefile
+fl_lakes <- st_read(lake_file[1], quiet = TRUE) %>%
+  st_transform(4326)
+
+fl_counties <- map_data("county", "florida")
+fl_state <- map_data("state", "florida")
+
+ggplot() +
+  
+  geom_polygon(
+    data = fl_counties,
+    aes(x = long, y = lat, group = group),
+    fill = "gray97",
+    color = "gray70",
+    linewidth = 0.25
+  ) +
+  
+  # Florida outline
+  geom_polygon(
+    data = fl_state,
+    aes(x = long, y = lat, group = group),
+    fill = NA,
+    color = "gray25",
+    linewidth = 0.65
+  ) +
+  
+  geom_sf(
+    data = fl_lakes,
+    fill = "#2C7FB8",
+    color = "#08519C",
+    linewidth = 0.08,
+    alpha = 0.75,
+    inherit.aes = FALSE
+  ) +
+  
+  coord_sf(
+    xlim = c(-87.8, -79.6),
+    ylim = c(24.3, 31.2),
+    expand = FALSE
+  ) +
+  
+  labs(
+    title = "Florida Lakes with County Boundaries",
+    subtitle = "County outlines make it easier to see where the lakes are located across the state",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Florida_Lakes shapefile and Florida county outlines from the maps package"
+  ) +
+  
+  theme_void(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    plot.caption = element_text(size = 9, color = "gray40"),
+    plot.margin = margin(15, 15, 15, 15)
+  )
+```
+
+## Analysis of Viz 4
+
+The spatial visualization shows Florida lakes layered on top of county boundaries. The lakes are shown in blue, while the counties are shown as light background outlines. This keeps the focus on the lakes while still giving the viewer enough geographic context.
+
+The main pattern is that lakes are not evenly distributed across Florida. There are strong clusters through central Florida, with smaller groups appearing in other parts of the state. Some counties have many visible lakes, while others have fewer. This makes the map useful because it shows spatial distribution, not just individual lake shapes.
+
+I chose to remove the area color scale from the final version because the largest lake overpowered the map and made the smaller lakes harder to see. Since the main goal of this plot was to show where lakes are located, using one consistent lake color made the visualization clearer. This is a design choice focused on readability instead of showing every possible variable at once.
+
+This plot satisfies the spatial visualization requirement because it uses actual shapefile geometry. The county overlay also improves the design because it helps the reader understand location, not just shape.
+
+# Design Choices and Visualization Principles
+
+I tried to apply the main principles of data visualization by making each chart focus on one main idea. The temperature line chart focuses on seasonal change over time. The calendar heatmap focuses on daily temperature intensity across the year. The model scatter plot focuses on the relationship between daily low and high temperature. The Florida Lakes map focuses on spatial location and distribution.
+
+The main difficulty was making the spatial plot readable. The lakes were technically mapped correctly at first, but without county boundaries, the map lacked any context at all just being shapes on a blank canvas. Adding the county overlay from the maps library made the plot usable.
+
+# Conclusion
+
+Overall, this project shows two different types of data visualization. The weather section focuses on time-based and numeric data, while the Florida Lakes section focuses on spatial data. The weather plots show that Atlanta temperatures in 2019 followed a clear seasonal pattern, with daily high and low temperatures rising into summer and falling again near winter. The model visualization also shows that daily low temperature is a strong predictor of daily high temperature.
+
+The Florida Lakes map shows that lakes are not evenly distributed across the state. Adding county boundaries made the map much easier to interpret because it gave the viewer geographic context. This helped turn the shapefile from a set of floating lake shapes into a more meaningful spatial visualization.
+
+If I expanded this project further, I would try to connect the weather data to a true spatial weather dataset. That would allow the time-based and spatial sections to be linked more directly. I would also try more advanced weather models using humidity, cloud cover, rainfall, and wind speed. For this project, though, the final set of visualizations meets the assignment requirements by including an interactive plot, a spatial visualization, a model visualization, annotations, and a clear written explanation of the process and findings.
+
+
+
+AI USE Statement:
+
+I used ChatGPT to help improve sentence structure, wording, and organization in my report. The analysis, visualizations, project direction, and final decisions were my own.
+
+
+
+
+
+
+
