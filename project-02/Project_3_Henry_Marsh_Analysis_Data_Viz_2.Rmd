@@ -1,0 +1,1028 @@
+---
+title: "Project 02: Weather and Florida Lakes"
+author: "Henry Marsh"
+date: "2026-06-20"
+output:
+  html_document:
+    keep_md: true
+    toc: true
+    toc_float: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(plotly)
+library(sf)
+library(broom)
+library(scales)
+library(maps)
+library(htmlwidgets)
+
+theme_set(theme_minimal(base_size = 13))
+```
+
+## Load Data
+
+```{r load-data}
+weather_url <- "https://raw.githubusercontent.com/SkyShroom/dataviz_final_project/refs/heads/main/data/tpa_weather_2022.csv"
+
+weather <- readr::read_csv(weather_url, show_col_types = TRUE)
+
+glimpse(weather)
+```
+
+```{r florida-lakes-load}
+lake_url <- "/vsicurl/https://raw.githubusercontent.com/SkyShroom/dataviz_final_project/main/data/Florida_Lakes/Florida_Lakes.shp"
+
+fl_lakes <- sf::st_read(lake_url, quiet = TRUE) %>%
+  sf::st_transform(4326)
+```
+
+## Cleaning of Data
+
+```{r clean-weather-data}
+weather_clean <- weather %>%
+  mutate(
+    date = as.Date(paste(year, month, day, sep = "-")),
+    month_label = lubridate::month(date, label = TRUE, abbr = TRUE),
+    month_num = lubridate::month(date),
+    day_of_year = lubridate::yday(date),
+    tmax = max_temp,
+    tmin = min_temp,
+    prcp = precipitation,
+    temp_range = tmax - tmin,
+    rain_day = if_else(prcp > 0, "Rain", "No rain")
+  ) %>%
+  drop_na(date, tmax, tmin, prcp)
+
+glimpse(weather_clean)
+```
+
+```{r clean-lakes-data}
+fl_lakes_clean <- fl_lakes %>%
+  st_make_valid() %>%
+  st_transform(4326) %>%
+  rename_with(~ str_to_lower(gsub("\\.", "_", .x))) %>%
+  mutate(
+    name = str_squish(name),
+    county = str_to_title(str_squish(county)),
+    name = na_if(name, ""),
+    county = na_if(county, "")
+  ) %>%
+  filter(!st_is_empty(geometry))
+
+glimpse(fl_lakes_clean)
+```
+
+
+## Summary
+
+```{r weather-summary}
+weather_summary <- weather_clean %>%
+  summarise(
+    days = n(),
+    avg_high_temp = mean(tmax, na.rm = TRUE),
+    avg_low_temp = mean(tmin, na.rm = TRUE),
+    avg_temp_range = mean(temp_range, na.rm = TRUE),
+    total_rainfall = sum(prcp, na.rm = TRUE),
+    rain_days = sum(prcp > 0, na.rm = TRUE),
+    hottest_day = max(tmax, na.rm = TRUE),
+    coldest_day = min(tmin, na.rm = TRUE)
+  )
+
+weather_summary
+```
+
+```{r}
+fl_lakes_summary <- fl_lakes_clean %>%
+  mutate(
+    area_sq_km = as.numeric(st_area(st_transform(geometry, 3086))) / 1000000
+  ) %>%
+  st_drop_geometry() %>%
+  summarise(
+    total_lakes = n(),
+    named_lakes = sum(!is.na(name)),
+    counties_in_data = n_distinct(county, na.rm = TRUE),
+    avg_lake_area_sq_km = mean(area_sq_km, na.rm = TRUE),
+    median_lake_area_sq_km = median(area_sq_km, na.rm = TRUE),
+    largest_lake_sq_km = max(area_sq_km, na.rm = TRUE)
+  )
+
+fl_lakes_summary
+```
+
+
+# Visualization 1: Interactive Temperature Line Chart
+
+```{r interactive-temperature-chart}
+temp_long <- weather_clean %>%
+  select(date, tmax, tmin) %>%
+  pivot_longer(
+    cols = c(tmax, tmin),
+    names_to = "temperature_type",
+    values_to = "temperature"
+  ) %>%
+  mutate(
+    temperature_type = recode(
+      temperature_type,
+      tmax = "Daily High",
+      tmin = "Daily Low"
+    )
+  )
+
+p_temp <- ggplot(
+  temp_long,
+  aes(
+    x = date,
+    y = temperature,
+    color = temperature_type,
+    group = temperature_type,
+    text = paste(
+      "Date:", date,
+      "<br>Type:", temperature_type,
+      "<br>Temperature:", round(temperature, 1)
+    )
+  )
+) +
+  geom_line(linewidth = 1.1, alpha = 0.9) +
+  scale_color_manual(
+    values = c(
+      "Daily High" = "#000000",
+    "Daily Low" = "#0072B2"
+    )
+  ) +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  labs(
+    title = "Atlanta Daily Temperatures in 2019",
+    subtitle = "Daily highs and lows rise into summer, then fall back down toward winter",
+    x = NULL,
+    y = "Temperature",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 11),
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(20, 25, 25, 25)
+  )
+
+interactive_temperature_plot <- ggplotly(p_temp, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Atlanta Daily Temperatures in 2019",
+        "<br><sup>Daily highs and lows rise into summer, then fall back down toward winter</sup>"
+      ),
+      x = 0.05
+    ),
+    legend = list(
+      orientation = "h",
+      x = 0.05,
+      y = -0.18
+    ),
+    margin = list(
+      t = 95,
+      b = 95,
+      l = 75,
+      r = 40
+    )
+  )
+
+interactive_temperature_plot
+```
+
+## Analysis of Visualization 1
+
+The temperature chart shows a clear seasonal pattern in Atlanta during 2019. Daily high and low temperatures rise into the summer months and then drop again near winter.
+
+The interactive part lets the reader hover over each day to see the exact date, temperature type, and temperature value. This adds detail without crowding the chart with labels for every single day.
+
+Swap to high contrast palette for colorblind friendliness
+
+# Visualization 2: Calendar Heatmap
+
+```{r calendar-heatmap, message=FALSE, warning=FALSE, fig.alt="Calendar heatmap showing Atlanta daily high temperatures in 2019 by month, weekday, and week of month, with darker colors showing cooler days and brighter colors showing hotter days."}
+calendar_weather <- weather_clean %>%
+  mutate(
+    month = lubridate::month(date, label = TRUE, abbr = TRUE),
+    weekday = lubridate::wday(date, label = TRUE, abbr = TRUE, week_start = 1),
+    week_of_month = ceiling(
+      (lubridate::day(date) + lubridate::wday(lubridate::floor_date(date, "month"), week_start = 1) - 1) / 7
+    )
+  )
+
+ggplot(calendar_weather, aes(x = week_of_month, y = forcats::fct_rev(weekday), fill = tmax)) +
+  geom_tile(color = "white", linewidth = 0.35) +
+  facet_wrap(~ month, nrow = 3) +
+  scale_fill_viridis_c(
+    option = "inferno",
+    name = "Daily High\nTemperature",
+    na.value = "gray90"
+  ) +
+  scale_x_continuous(
+    breaks = 1:6,
+    expand = c(0, 0)
+  ) +
+  labs(
+    title = "Atlanta Daily High Temperatures in 2019",
+    subtitle = "Calendar heatmap showing hotter and cooler periods across the year",
+    x = "Week of Month",
+    y = NULL,
+    caption = "Color uses an inferno palette for stronger contrast and colorblind accessibility."
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.title = element_text(face = "bold", size = 18, color = "gray10"),
+    plot.subtitle = element_text(size = 11, color = "gray25"),
+    strip.text = element_text(face = "bold", size = 11),
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 8, color = "gray30"),
+    axis.text.y = element_text(size = 9, color = "gray30"),
+    legend.position = "top",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    plot.caption = element_text(size = 8, color = "gray40"),
+    plot.margin = margin(15, 20, 15, 20)
+  )
+```
+
+## Analysis of Visualization 2
+
+The calendar heatmap makes the seasonal pattern easier to read day by day. The hotter days are grouped around late spring and summer, while cooler daily highs appear closer to the start and end of the year.
+
+This chart works differently from the line chart because it shows the year as a calendar-like layout. That makes it easier to see clusters of hot days instead of only following the temperature line over time.
+
+# Visualization 3: Weather Model Visualization
+
+```{r model-fit}
+weather_model_data <- weather_clean %>%
+  select(date, tmax, tmin, month) %>%
+  drop_na(tmax, tmin)
+
+weather_lm <- lm(tmax ~ tmin, data = weather_model_data)
+
+summary(weather_lm)
+```
+
+```{r weather-model-visualization, message=FALSE, warning=FALSE, fig.alt="Scatterplot of Atlanta daily low temperature versus daily high temperature with colorblind-safe points and a black linear model line overlaid on top."}
+weather_model_data <- weather_clean %>%
+  select(date, tmax, tmin, month_num) %>%
+  drop_na(tmax, tmin) %>%
+  mutate(
+    season = case_when(
+      month_num %in% c(12, 1, 2) ~ "Winter",
+      month_num %in% c(3, 4, 5) ~ "Spring",
+      month_num %in% c(6, 7, 8) ~ "Summer",
+      month_num %in% c(9, 10, 11) ~ "Fall"
+    ),
+    season = factor(season, levels = c("Winter", "Spring", "Summer", "Fall"))
+  )
+
+weather_lm <- lm(tmax ~ tmin, data = weather_model_data)
+
+model_stats <- broom::glance(weather_lm)
+
+model_label <- paste0(
+  "R-squared: ", round(model_stats$r.squared, 3),
+  "\nSlope: ", round(coef(weather_lm)[2], 2)
+)
+
+ggplot(weather_model_data, aes(x = tmin, y = tmax)) +
+  geom_point(
+    aes(fill = season, shape = season),
+    color = "gray15",
+    stroke = 0.45,
+    alpha = 0.85,
+    size = 3
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "black",
+    fill = "gray75",
+    linewidth = 1.3,
+    alpha = 0.3
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Winter" = "#0072B2",
+      "Spring" = "#009E73",
+      "Summer" = "#E69F00",
+      "Fall" = "#CC79A7"
+    )
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Winter" = 21,
+      "Spring" = 22,
+      "Summer" = 24,
+      "Fall" = 23
+    )
+  ) +
+  annotate(
+    "label",
+    x = min(weather_model_data$tmin, na.rm = TRUE),
+    y = max(weather_model_data$tmax, na.rm = TRUE),
+    label = model_label,
+    hjust = 0,
+    vjust = 1,
+    size = 4,
+    fill = "white",
+    color = "gray15"
+  ) +
+  labs(
+    title = "Daily Low Temperature vs Daily High Temperature",
+    subtitle = "Linear model overlaid on a colorblind-safe scatter plot",
+    x = "Daily Low Temperature (°F)",
+    y = "Daily High Temperature (°F)",
+    fill = "Season",
+    shape = "Season",
+    caption = "Black line shows the fitted linear model with confidence interval."
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    plot.caption = element_text(size = 8, color = "gray40")
+  )
+```
+
+## Analysis of Visualization 3
+
+The model visualization compares daily low temperature to daily high temperature. I used a scatter plot with a fitted linear model line because the assignment required a model visualization, and this relationship is easy to interpret.
+
+The model has an R-squared value of `r round(model_stats$r.squared, 3)`, meaning daily low temperature explains a large share of the variation in daily high temperature. The slope is `r round(coef(weather_lm)[2], 3)`, which means that as daily low temperature increases, daily high temperature also tends to increase.
+
+The monthly coloring adds more context to the model. Colder months are mostly found in the lower-left part of the chart, while warmer months are mostly found in the upper-right. This connects the model back to the seasonal pattern shown in the earlier weather visualizations.
+
+This model visualization keeps the scatter points separate from the model line by using filled seasonal colors and a black regression line. I also used different point shapes, so the chart is not relying only on color to separate the seasons.
+
+# Section 2: Florida Lakes Spatial Data
+
+The second part of the project uses the Florida Lakes shapefile. This dataset is different from the weather dataset because it contains geometry instead of only regular table values. Each lake is represented as a spatial feature, which makes it appropriate for the required spatial visualization.
+
+At first, the lake map was harder to interpret because the lakes appeared without much geographic context. To improve this, I added Florida county boundaries underneath the lake layer. This made the map easier to read because the viewer can now see where the lakes are located across the state.
+
+# Visualization 4: Spatial Visualization of Florida Lakes
+
+```{r florida-lakes-spatial-map, message=FALSE, warning=FALSE, fig.alt="Map of Florida counties shaded by the number of named lakes, with Florida lake polygons overlaid for spatial context."}
+library(sf)
+library(tidyverse)
+library(maps)
+
+# Count lakes by county
+lake_counties <- fl_lakes_clean %>%
+  st_drop_geometry() %>%
+  count(county, name = "lake_count") %>%
+  mutate(county_join = str_to_lower(county))
+
+# County map data
+fl_counties <- map_data("county", "florida") %>%
+  mutate(county_join = str_to_lower(subregion)) %>%
+  left_join(lake_counties, by = "county_join") %>%
+  mutate(
+    lake_count = replace_na(lake_count, 0),
+    lake_count_group = cut(
+      lake_count,
+      breaks = c(-1, 0, 10, 25, 50, 100, Inf),
+      labels = c("0", "1-10", "11-25", "26-50", "51-100", "100+")
+    )
+  )
+
+# State outline
+fl_state <- map_data("state", "florida")
+
+ggplot() +
+  geom_polygon(
+    data = fl_counties,
+    aes(x = long, y = lat, group = group, fill = lake_count_group),
+    color = "gray70",
+    linewidth = 0.2
+  ) +
+  geom_sf(
+    data = fl_lakes_clean,
+    fill = "#0072B2",
+    color = "#003B5C",
+    linewidth = 0.05,
+    alpha = 0.45,
+    inherit.aes = FALSE
+  ) +
+  geom_polygon(
+    data = fl_state,
+    aes(x = long, y = lat, group = group),
+    fill = NA,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  scale_fill_viridis_d(
+    option = "cividis",
+    direction = 1,
+    name = "Named lakes\nby county"
+  ) +
+  coord_sf(
+    xlim = c(-87.8, -79.6),
+    ylim = c(24.3, 31.2),
+    expand = FALSE
+  ) +
+  labs(
+    title = "Named Florida Lakes by County",
+    subtitle = "County shading shows the number of named lakes, with lake polygons overlaid in blue",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Florida Lakes shapefile and Florida county boundaries from the maps package"
+  ) +
+  theme_void(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, color = "gray10"),
+    plot.subtitle = element_text(size = 11, color = "gray25"),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 9),
+    legend.text = element_text(size = 8),
+    plot.caption = element_text(size = 8, color = "gray40"),
+    plot.margin = margin(15, 15, 15, 15)
+  )
+```
+
+## Analysis of Visualization 4
+
+The spatial visualization shows Florida lakes layered on top of county boundaries. The lakes are shown in blue, while the counties are shown as light background outlines. This keeps the focus on the lakes while still giving the viewer enough geographic context.
+
+The main pattern is that lakes are not evenly distributed across Florida. There are strong clusters through central Florida, with smaller groups appearing in other parts of the state. Some counties have many visible lakes, while others have fewer. This makes the map useful because it shows spatial distribution, not just individual lake shapes.
+
+I chose to use one consistent lake color because the main goal of this plot was to show location and distribution. Using an area color scale would add another variable, but it would also make smaller lakes harder to see.
+
+This spatial visualization adds a lake variable by showing the number of named lakes in each Florida county. The darker county shading shows where lake counts are higher, while the blue lake polygons show the actual spatial pattern of the lakes themselves.
+
+The map shows that named lakes are not evenly distributed across Florida. Central Florida has stronger lake clustering, while several coastal and southern counties show fewer named lake features. I used a colorblind-safe cividis palette for the county counts and a high-contrast blue overlay for the lakes.
+
+# Redesign: Before and After
+
+### Before Temp Plot
+
+```{r Before-Interactive-temperature-plot, fig.width=11, fig.height=6, include=FALSE}
+
+temp_long <- weather_clean %>%
+  select(date, tmax, tmin) %>%
+  pivot_longer(
+    cols = c(tmax, tmin),
+    names_to = "temperature_type",
+    values_to = "temperature"
+  ) %>%
+  mutate(
+    temperature_type = recode(
+      temperature_type,
+      tmax = "Daily High",
+      tmin = "Daily Low"
+    )
+  )
+
+p_temp <- ggplot(
+  temp_long,
+  aes(
+    x = date,
+    y = temperature,
+    color = temperature_type,
+    group = temperature_type,
+    text = paste(
+      "Date:", date,
+      "<br>Type:", temperature_type,
+      "<br>Temperature:", round(temperature, 1)
+    )
+  )
+) +
+  geom_line(linewidth = 1.1, alpha = 0.9) +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  labs(
+    title = "Atlanta Daily Temperatures in 2019",
+    subtitle = "Daily highs and lows rise into summer, then fall back down toward winter",
+    x = NULL,
+    y = "Temperature",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+  plot.title = element_text(face = "bold", size = 16),
+  plot.subtitle = element_text(size = 11),
+  legend.position = "none",
+  panel.grid.minor = element_blank(),
+  plot.margin = margin(20, 25, 25, 25)
+)
+
+ggplotly(p_temp, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Atlanta Daily Temperatures in 2019",
+        "<br><sup>Daily highs and lows rise into summer, then fall back down toward winter</sup>"
+      ),
+      x = 0.05
+    ),
+    legend = list(
+      orientation = "h",
+      x = 0.05,
+      y = -0.18
+    ),
+    margin = list(
+      t = 95,
+      b = 95,
+      l = 75,
+      r = 40
+    )
+  )
+```
+
+### After Temp Plot
+
+```{r After-interactive-temperature-chart, include=FALSE}
+temp_long <- weather_clean %>%
+  select(date, tmax, tmin) %>%
+  pivot_longer(
+    cols = c(tmax, tmin),
+    names_to = "temperature_type",
+    values_to = "temperature"
+  ) %>%
+  mutate(
+    temperature_type = recode(
+      temperature_type,
+      tmax = "Daily High",
+      tmin = "Daily Low"
+    )
+  )
+
+p_temp <- ggplot(
+  temp_long,
+  aes(
+    x = date,
+    y = temperature,
+    color = temperature_type,
+    group = temperature_type,
+    text = paste(
+      "Date:", date,
+      "<br>Type:", temperature_type,
+      "<br>Temperature:", round(temperature, 1)
+    )
+  )
+) +
+  geom_line(linewidth = 1.1, alpha = 0.9) +
+  scale_color_manual(
+    values = c(
+      "Daily High" = "#000000",
+    "Daily Low" = "#0072B2"
+    )
+  ) +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  labs(
+    title = "Atlanta Daily Temperatures in 2019",
+    subtitle = "Daily highs and lows rise into summer, then fall back down toward winter",
+    x = NULL,
+    y = "Temperature",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 11),
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(20, 25, 25, 25)
+  )
+
+interactive_temperature_plot <- ggplotly(p_temp, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Atlanta Daily Temperatures in 2019",
+        "<br><sup>Daily highs and lows rise into summer, then fall back down toward winter</sup>"
+      ),
+      x = 0.05
+    ),
+    legend = list(
+      orientation = "h",
+      x = 0.05,
+      y = -0.18
+    ),
+    margin = list(
+      t = 95,
+      b = 95,
+      l = 75,
+      r = 40
+    )
+  )
+
+interactive_temperature_plot
+```
+
+The redesigned chart keeps the same data, but makes the result easier to read. I changed the colors to a high-contrast colorblind-friendly pair, added clearer temperature labeling, reduced unnecessary grid clutter, and made the seasonal pattern stand out more directly.
+
+The interactive temperature chart earlier in the report is the final version of this redesign. It adds hover text so the reader can check exact dates and temperature values without crowding the main chart.
+
+## Before and After Heatmap
+
+### Before Heatmap
+
+```{r Before Calendar Heatmap, echo=FALSE}
+# So this turned the normal heat map into an almost calender type of view that i thought i was really cool way to analyze the changing temperatures, 
+
+calendar_weather <- weather_clean %>%
+  mutate(
+    week = isoweek(date),
+    weekday = wday(date, label = TRUE, abbr = TRUE, week_start = 1)
+  )
+
+ggplot(calendar_weather, aes(x = week, y = fct_rev(weekday), fill = tmax)) +
+  geom_tile(color = "white", linewidth = 0.25) +
+  facet_wrap(~ month, scales = "free_x", nrow = 3) +
+  scale_fill_gradient(
+    low = "#d7ecff",
+    high = "#b30000"
+  ) +
+  labs(
+    title = "Daily High Temperatures as a Calendar Heatmap",
+    subtitle = "Each tile represents one day in 2019, with darker red showing hotter daily highs",
+    x = "Week of Year",
+    y = NULL,
+    fill = "Daily High"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    strip.text = element_text(face = "bold", size = 11),
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 9),
+    legend.position = "top",
+    plot.margin = margin(15, 20, 15, 20)
+  )
+```
+
+### After Heatmap
+
+```{r After-calendar-heatmap, message=FALSE, warning=FALSE, echo=FALSE, fig.alt="Calendar heatmap showing Atlanta daily high temperatures in 2019 by month, weekday, and week of month, with darker colors showing cooler days and brighter colors showing hotter days."}
+calendar_weather <- weather_clean %>%
+  mutate(
+    month = lubridate::month(date, label = TRUE, abbr = TRUE),
+    weekday = lubridate::wday(date, label = TRUE, abbr = TRUE, week_start = 1),
+    week_of_month = ceiling(
+      (lubridate::day(date) + lubridate::wday(lubridate::floor_date(date, "month"), week_start = 1) - 1) / 7
+    )
+  )
+
+ggplot(calendar_weather, aes(x = week_of_month, y = forcats::fct_rev(weekday), fill = tmax)) +
+  geom_tile(color = "white", linewidth = 0.35) +
+  facet_wrap(~ month, nrow = 3) +
+  scale_fill_viridis_c(
+    option = "inferno",
+    name = "Daily High\nTemperature",
+    na.value = "gray90"
+  ) +
+  scale_x_continuous(
+    breaks = 1:6,
+    expand = c(0, 0)
+  ) +
+  labs(
+    title = "Atlanta Daily High Temperatures in 2019",
+    subtitle = "Calendar heatmap showing hotter and cooler periods across the year",
+    x = "Week of Month",
+    y = NULL,
+    caption = "Color uses an inferno palette for stronger contrast and colorblind accessibility."
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.title = element_text(face = "bold", size = 18, color = "gray10"),
+    plot.subtitle = element_text(size = 11, color = "gray25"),
+    strip.text = element_text(face = "bold", size = 11),
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 8, color = "gray30"),
+    axis.text.y = element_text(size = 9, color = "gray30"),
+    legend.position = "top",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    plot.caption = element_text(size = 8, color = "gray40"),
+    plot.margin = margin(15, 20, 15, 20)
+  )
+```
+
+## Before and After Model plot
+
+### Before Model Plot
+
+```{r Before-weather-linear-model-scatter, message=FALSE, warning=FALSE, fig.width=9.5, fig.height=6.5, echo=FALSE}
+library(tidyverse)
+library(broom)
+library(scales)
+
+
+weather_model_data <- weather_clean %>%
+  select(date, tmax, tmin, month) %>%
+  drop_na(tmax, tmin)
+
+# Basic Linear model
+weather_lm <- lm(tmax ~ tmin, data = weather_model_data)
+
+summary(weather_lm)
+
+model_stats <- glance(weather_lm)
+
+model_label <- paste0(
+  "R-squared: ", round(model_stats$r.squared, 3),
+  "\nSlope: ", round(coef(weather_lm)[2], 3)
+)
+
+ggplot(weather_model_data, aes(x = tmin, y = tmax)) +
+  geom_point(
+    aes(color = month),
+    alpha = 0.65,
+    size = 2.4
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    linewidth = 1.2,
+    color = "#D95F02",
+    fill = "#FDD0A2",
+    alpha = 0.25
+  ) +
+  annotate(
+    "label",
+    x = min(weather_model_data$tmin, na.rm = TRUE),
+    y = max(weather_model_data$tmax, na.rm = TRUE),
+    label = model_label,
+    hjust = 0,
+    size = 4,
+    fill = "white",
+    color = "gray20"
+  ) +
+  labs(
+    title = "Model Visualization: Daily Low Temperature vs Daily High Temperature",
+    subtitle = "The linear model shows how strongly daily lows are related to daily highs",
+    x = "Daily Low Temperature",
+    y = "Daily High Temperature",
+    color = "Month",
+    caption = "Model: daily high temperature predicted using daily low temperature"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    legend.position = "right",
+    panel.grid.minor = element_blank(),
+    plot.caption = element_text(size = 9, color = "gray40"),
+    plot.margin = margin(15, 20, 15, 20)
+  )
+```
+
+### After Model Plot
+
+```{r After-weather-model-visualization, message=FALSE, warning=FALSE, echo=FALSE, fig.alt="Scatterplot of Atlanta daily low temperature versus daily high temperature with colorblind-safe points and a black linear model line overlaid on top."}
+weather_model_data <- weather_clean %>%
+  select(date, tmax, tmin, month_num) %>%
+  drop_na(tmax, tmin) %>%
+  mutate(
+    season = case_when(
+      month_num %in% c(12, 1, 2) ~ "Winter",
+      month_num %in% c(3, 4, 5) ~ "Spring",
+      month_num %in% c(6, 7, 8) ~ "Summer",
+      month_num %in% c(9, 10, 11) ~ "Fall"
+    ),
+    season = factor(season, levels = c("Winter", "Spring", "Summer", "Fall"))
+  )
+
+weather_lm <- lm(tmax ~ tmin, data = weather_model_data)
+
+model_stats <- broom::glance(weather_lm)
+
+model_label <- paste0(
+  "R-squared: ", round(model_stats$r.squared, 3),
+  "\nSlope: ", round(coef(weather_lm)[2], 2)
+)
+
+ggplot(weather_model_data, aes(x = tmin, y = tmax)) +
+  geom_point(
+    aes(fill = season, shape = season),
+    color = "gray15",
+    stroke = 0.45,
+    alpha = 0.85,
+    size = 3
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "black",
+    fill = "gray75",
+    linewidth = 1.3,
+    alpha = 0.3
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Winter" = "#0072B2",
+      "Spring" = "#009E73",
+      "Summer" = "#E69F00",
+      "Fall" = "#CC79A7"
+    )
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Winter" = 21,
+      "Spring" = 22,
+      "Summer" = 24,
+      "Fall" = 23
+    )
+  ) +
+  annotate(
+    "label",
+    x = min(weather_model_data$tmin, na.rm = TRUE),
+    y = max(weather_model_data$tmax, na.rm = TRUE),
+    label = model_label,
+    hjust = 0,
+    vjust = 1,
+    size = 4,
+    fill = "white",
+    color = "gray15"
+  ) +
+  labs(
+    title = "Daily Low Temperature vs Daily High Temperature",
+    subtitle = "Linear model overlaid on a colorblind-safe scatter plot",
+    x = "Daily Low Temperature (°F)",
+    y = "Daily High Temperature (°F)",
+    fill = "Season",
+    shape = "Season",
+    caption = "Black line shows the fitted linear model with confidence interval."
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    plot.caption = element_text(size = 8, color = "gray40")
+  )
+```
+
+## Before Lakes Map
+
+### Before Lakes Map
+
+```{r Before-spatial-florida-lakes, message=FALSE, warning=FALSE, fig.width=9, fig.height=8, echo=FALSE}
+library(sf)
+library(tidyverse)
+library(scales)
+
+# This is the spatial plot required by the assignment. Since the Atlanta weather data does not have coordinates, I am using the Florida_Lakes shapefile as the spatial dataset.
+
+lake_url <- "/vsicurl/https://raw.githubusercontent.com/SkyShroom/dataviz_final_project/main/data/Florida_Lakes/Florida_Lakes.shp"
+
+fl_lakes <- sf::st_read(lake_url, quiet = TRUE) %>%
+  sf::st_transform(4326)
+
+fl_counties <- map_data("county", "florida")
+fl_state <- map_data("state", "florida")
+
+ggplot() +
+  
+  geom_polygon(
+    data = fl_counties,
+    aes(x = long, y = lat, group = group),
+    fill = "gray97",
+    color = "gray70",
+    linewidth = 0.25
+  ) +
+  
+  # Florida outline
+  geom_polygon(
+    data = fl_state,
+    aes(x = long, y = lat, group = group),
+    fill = NA,
+    color = "gray25",
+    linewidth = 0.65
+  ) +
+  
+  geom_sf(
+    data = fl_lakes,
+    fill = "#2C7FB8",
+    color = "#08519C",
+    linewidth = 0.08,
+    alpha = 0.75,
+    inherit.aes = FALSE
+  ) +
+  
+  coord_sf(
+    xlim = c(-87.8, -79.6),
+    ylim = c(24.3, 31.2),
+    expand = FALSE
+  ) +
+  
+  labs(
+    title = "Florida Lakes with County Boundaries",
+    subtitle = "County outlines make it easier to see where the lakes are located across the state",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Florida_Lakes shapefile and Florida county outlines from the maps package"
+  ) +
+  
+  theme_void(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    plot.caption = element_text(size = 9, color = "gray40"),
+    plot.margin = margin(15, 15, 15, 15)
+  )
+```
+
+### After Lakes Map
+
+```{r after_florida_lakes_spatial_map, message=FALSE, warning=FALSE, echo=FALSE, fig.alt="Map of Florida counties shaded by the number of named lakes, with Florida lake polygons overlaid for spatial context."}
+library(sf)
+library(tidyverse)
+library(maps)
+
+# Count lakes by county
+lake_counties <- fl_lakes_clean %>%
+  st_drop_geometry() %>%
+  count(county, name = "lake_count") %>%
+  mutate(county_join = str_to_lower(county))
+
+# County map data
+fl_counties <- map_data("county", "florida") %>%
+  mutate(county_join = str_to_lower(subregion)) %>%
+  left_join(lake_counties, by = "county_join") %>%
+  mutate(
+    lake_count = replace_na(lake_count, 0),
+    lake_count_group = cut(
+      lake_count,
+      breaks = c(-1, 0, 10, 25, 50, 100, Inf),
+      labels = c("0", "1-10", "11-25", "26-50", "51-100", "100+")
+    )
+  )
+
+# State outline
+fl_state <- map_data("state", "florida")
+
+ggplot() +
+  geom_polygon(
+    data = fl_counties,
+    aes(x = long, y = lat, group = group, fill = lake_count_group),
+    color = "gray70",
+    linewidth = 0.2
+  ) +
+  geom_sf(
+    data = fl_lakes_clean,
+    fill = "#0072B2",
+    color = "#003B5C",
+    linewidth = 0.05,
+    alpha = 0.45,
+    inherit.aes = FALSE
+  ) +
+  geom_polygon(
+    data = fl_state,
+    aes(x = long, y = lat, group = group),
+    fill = NA,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  scale_fill_viridis_d(
+    option = "cividis",
+    direction = 1,
+    name = "Named lakes\nby county"
+  ) +
+  coord_sf(
+    xlim = c(-87.8, -79.6),
+    ylim = c(24.3, 31.2),
+    expand = FALSE
+  ) +
+  labs(
+    title = "Named Florida Lakes by County",
+    subtitle = "County shading shows the number of named lakes, with lake polygons overlaid in blue",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Florida Lakes shapefile and Florida county boundaries from the maps package"
+  ) +
+  theme_void(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, color = "gray10"),
+    plot.subtitle = element_text(size = 11, color = "gray25"),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 9),
+    legend.text = element_text(size = 8),
+    plot.caption = element_text(size = 8, color = "gray40"),
+    plot.margin = margin(15, 15, 15, 15)
+  )
+
+```
+
+
+# AI Use Statement
+
+I used ChatGPT to help improve sentence structure, wording, and organization in my report. The analysis, visualizations, project direction, and final decisions were my own.
+
+# Project 3 interactive map save
+
