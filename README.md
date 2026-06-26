@@ -9,7 +9,8 @@ This repository contains three projects completed during Data Visualization and 
 
 This project explores NYC rat complaints through geographic, temporal, and complaint-level patterns. The interactive maps allow the reader to examine individual complaint locations and larger areas of complaint density.
 
-This is this projects interactive and improved map, while keeping the same color aesthetic due to others not having a high enough contrast.
+This is a snapshot of this projects interactive and improved map, while keeping the same color aesthetic due to others not having a high enough contrast. 
+Click the link below it for the interactive version.
 ![Interactive map of NYC rat reports](figures/nyc_rats_map.png)
 
 [Open the interactive NYC rat complaint map](figures/nyc_rats_interactive.html)
