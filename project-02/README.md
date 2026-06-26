@@ -51,11 +51,11 @@ The model visualization shows a strong positive relationship between daily low t
 
 The Florida lakes map shows that named lakes are not evenly distributed across the state. Central Florida shows stronger lake clustering, while several coastal and southern counties have fewer named lake features.
 
-## Saved Figures
+## before and After of Model Plot
+
+![Old_Weather_model_Vizualization](/figures/project_02_old_weather_model.png)
 
 ![Weather model visualization](/figures/project_02_weather_model.png)
-
-![Florida lakes spatial map](/figures/project_02_florida_lakes_map.png)
 
 ## Future Directions
 
