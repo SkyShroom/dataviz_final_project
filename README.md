@@ -35,9 +35,9 @@ While this is instead the spatial plot using Florida Lakes data for this portion
 
 This project examines monthly temperature and precipitation patterns in Tampa during 2022, followed by an exploration of the variables connected to concrete strength.
 
-This Plot is a snapshot of the interactive map for this project, while you can see the full interactive html on the link below it.
+This graphs is by far my favorite in how it turned out. However, it isn't the interactive map.
 
-
+![Tampa's Daily Maximum Temperature Ridgeline plot](figures/project_03_project_03_weather_ridgeline.png)
 
 ## Moving Forward
 
