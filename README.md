@@ -22,7 +22,7 @@ Requirements addressed:
 - Accessibility: Colorblind-safe colors and alt text
 - Redesign: Daily temperature chart before and after
 
-![Atlanta daily temperature visualization]([figures/project_02_weather_model.png))
+![Atlanta daily temperature visualization]([figures/project_02_weather_model.png)
 
 [Open the Weather Model Figure](figures/project_02_weather_model.png)
 
