@@ -17,14 +17,13 @@ This project explores NYC rat complaints through geographic, temporal, and compl
 
 This project examines seasonal weather patterns in Atlanta and the spatial distribution of lakes across Florida. It combines interactive time-series data, calendar heatmaps, model visualization, and spatial analysis.
 
-Requirements addressed:
-- Interactive visualization: Plotly temperature chart
-- Accessibility: Colorblind-safe colors and alt text
-- Redesign: Daily temperature chart before and after
-
 ![Atlanta daily temperature visualization](figures/project_02_weather_model.png)
 
 [Open the Weather Model Figure](figures/project_02_weather_model.png)
+
+![Lakes Across Florida by county](figures/project_02_florida_lakes_map.png)
+
+[Lakes Across Florida by county]
 
 ## Project 03: Tampa Weather and Concrete Strength
 
