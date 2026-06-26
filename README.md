@@ -11,6 +11,7 @@ This project explores NYC rat complaints through geographic, temporal, and compl
 
 This is a snapshot of this projects interactive and improved map, while keeping the same color aesthetic due to others not having a high enough contrast. 
 Click the link below it for the interactive version.
+
 ![Interactive map of NYC rat reports](figures/nyc_rats_map.png)
 
 [Open the interactive NYC rat complaint map](figures/nyc_rats_interactive.html)
@@ -24,6 +25,8 @@ This is this Projects Model graph, and was improved by using shapes and varried 
 
 [Open the Weather Model Figure](figures/project_02_weather_model.png)
 
+While this is instead the spatial plot using Florida Lakes data for this portion of the project. What has changed ,as you can see by going to the Project 3 Mini project 2 file in Project 2, was the contrast colors, the lake variable used, as well going by countries now.
+
 ![Lakes Across Florida by county](figures/project_02_florida_lakes_map.png)
 
 [Lakes Across Florida by county](figures/project_02_florida_lakes_map.png)
@@ -32,10 +35,9 @@ This is this Projects Model graph, and was improved by using shapes and varried 
 
 This project examines monthly temperature and precipitation patterns in Tampa during 2022, followed by an exploration of the variables connected to concrete strength.
 
-Requirements addressed:
-- Interactive visualization: Concrete strength scatterplot
-- Accessibility: Viridis palettes and alt text
-- Redesign: Concrete scatterplot before and after
+This Plot is a snapshot of the interactive map for this project, while you can see the full interactive html on the link below it.
+
+
 
 ## Moving Forward
 
