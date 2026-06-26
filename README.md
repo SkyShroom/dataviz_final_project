@@ -23,7 +23,7 @@ This project examines seasonal weather patterns in Atlanta and the spatial distr
 
 ![Lakes Across Florida by county](figures/project_02_florida_lakes_map.png)
 
-[Lakes Across Florida by county]
+[Lakes Across Florida by county](figures/project_02_florida_lakes_map.png)
 
 ## Project 03: Tampa Weather and Concrete Strength
 
