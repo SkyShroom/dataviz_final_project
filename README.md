@@ -37,7 +37,7 @@ This project examines monthly temperature and precipitation patterns in Tampa du
 
 This graphs is by far my favorite in how it turned out. However, it isn't the interactive map.
 
-![Tampa's Daily Maximum Temperature Ridgeline plot](figures/project_03_project_03_weather_ridgeline.png)
+![Tampa's Daily Maximum Temperature Ridgeline plot](figures/project_03_weather_ridgeline.png)
 
 ## Moving Forward
 
