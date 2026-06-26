@@ -9,6 +9,7 @@ This repository contains three projects completed during Data Visualization and 
 
 This project explores NYC rat complaints through geographic, temporal, and complaint-level patterns. The interactive maps allow the reader to examine individual complaint locations and larger areas of complaint density.
 
+This is this projects interactive and improved map, while keeping the same color aesthetic due to others not having a high enough contrast.
 ![Interactive map of NYC rat reports](figures/nyc_rats_map.png)
 
 [Open the interactive NYC rat complaint map](figures/nyc_rats_interactive.html)
@@ -17,6 +18,7 @@ This project explores NYC rat complaints through geographic, temporal, and compl
 
 This project examines seasonal weather patterns in Atlanta and the spatial distribution of lakes across Florida. It combines interactive time-series data, calendar heatmaps, model visualization, and spatial analysis.
 
+This is this Projects Model graph, and was improved by using shapes and varried colors, rather than a simple blue gradient filter to improve user expierence.
 ![Atlanta daily temperature visualization](figures/project_02_weather_model.png)
 
 [Open the Weather Model Figure](figures/project_02_weather_model.png)
