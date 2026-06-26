@@ -1,0 +1,567 @@
+---
+title: "Project 03: Tampa Weather and Concrete Strength"
+author: "Henry Marsh"
+date: "2026-06-26"
+output:
+  html_document:
+    keep_md: true
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggridges)
+library(plotly)
+library(htmlwidgets)
+library(scales)
+library(broom)
+
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center"
+)
+
+theme_set(theme_minimal(base_size = 13))
+```
+
+# Introduction
+
+This project uses two datasets to practice different data visualization methods. Part 1 focuses on Tampa weather data from 2022, mainly looking at temperature distributions and precipitation patterns. Part 2 uses the concrete strength dataset and focuses on how concrete strength changes with age and mix variables.
+
+# Part 1: Tampa Weather Data
+
+```{r load-weather-data}
+weather_url <- "https://raw.githubusercontent.com/SkyShroom/dataviz_final_project/main/data/tpa_weather_2022.csv"
+
+weather_tpa <- read_csv(weather_url, show_col_types = FALSE)
+
+weather_clean <- weather_tpa %>%
+  mutate(
+    max_temp = na_if(max_temp, -99.9),
+    min_temp = na_if(min_temp, -99.9),
+    ave_temp = na_if(ave_temp, -99.9),
+    precipitation = na_if(precipitation, -99.99),
+    precipitation = if_else(precipitation < 0, NA_real_, precipitation),
+    date = make_date(year, month, day),
+    month_label = month(date, label = TRUE, abbr = TRUE),
+    month_num = month(date),
+    rain_day = if_else(precipitation > 0, "Rain", "No rain")
+  ) %>%
+  drop_na(date, max_temp, min_temp, ave_temp)
+```
+
+The weather data includes daily temperature and precipitation measurements from Tampa in 2022. I cleaned the missing values, created a date column, and added month labels so the data could be grouped more easily.
+
+## 1A. Monthly Faceted Histograms of Maximum Temperature
+
+```{r monthly-histograms, fig.alt="Faceted histograms showing the distribution of Tampa maximum daily temperatures by month in 2022."}
+hist_plot <- ggplot(weather_clean, aes(x = max_temp)) +
+  geom_histogram(
+    binwidth = 2,
+    fill = "#0072B2",
+    color = "white",
+    linewidth = 0.25
+  ) +
+  facet_wrap(~ month_label, ncol = 4) +
+  labs(
+    title = "Distribution of Daily Maximum Temperatures by Month",
+    subtitle = "Tampa daily highs were cooler in winter and warmer during the summer months",
+    x = "Maximum Temperature (F)",
+    y = "Number of Days"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+hist_plot
+```
+
+The monthly histograms show the seasonal shift in Tampa temperatures. Cooler daily highs appear in the early and late parts of the year, while summer months are more tightly grouped around higher temperatures.
+
+## 1B. Combined Monthly Density Plot
+
+```{r combined-density, fig.alt="Combined density plot showing Tampa maximum daily temperature distributions by month."}
+combined_density_plot <- ggplot(
+  weather_clean,
+  aes(x = max_temp, color = month_label, fill = month_label)
+) +
+  geom_density(alpha = 0.16, linewidth = 0.85) +
+  scale_color_viridis_d(option = "turbo") +
+  scale_fill_viridis_d(option = "turbo") +
+  labs(
+    title = "Monthly Density of Daily Maximum Temperatures",
+    subtitle = "Each density curve shows how daily high temperatures were distributed within a month",
+    x = "Maximum Temperature (F)",
+    y = "Density",
+    color = "Month",
+    fill = "Month"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    panel.grid.minor = element_blank(),
+    legend.position = "right"
+  )
+
+combined_density_plot
+```
+
+This combined density chart makes it easier to compare month-to-month temperature changes. The curves move toward hotter temperatures in the middle of the year, which matches the expected seasonal pattern.
+
+## 1C. Faceted Monthly Density Plot
+
+```{r faceted-density, fig.alt="Faceted density plots showing monthly distributions of Tampa maximum daily temperatures in 2022."}
+faceted_density_plot <- ggplot(weather_clean, aes(x = max_temp, fill = month_label)) +
+  geom_density(alpha = 0.75, color = "gray20", linewidth = 0.4) +
+  facet_wrap(~ month_label, ncol = 4) +
+  scale_fill_viridis_d(option = "plasma") +
+  labs(
+    title = "Faceted Density of Daily Maximum Temperatures",
+    subtitle = "Separating each month reduces overlap and makes each distribution easier to read",
+    x = "Maximum Temperature (F)",
+    y = "Density"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    strip.text = element_text(face = "bold"),
+    legend.position = "none",
+    panel.grid.minor = element_blank()
+  )
+
+faceted_density_plot
+```
+
+The faceted density plot shows the same temperature pattern with less visual overlap. This version is easier to read because each month has its own panel.
+
+## 1D. Ridgeline Plot
+
+```{r ridgeline-plot, fig.alt="Ridgeline plot showing the distribution of Tampa maximum daily temperatures by month in 2022."}
+ridgeline_plot <- ggplot(
+  weather_clean,
+  aes(x = max_temp, y = fct_rev(month_label), fill = after_stat(x))
+) +
+  geom_density_ridges_gradient(
+    scale = 2.4,
+    rel_min_height = 0.01,
+    quantile_lines = TRUE,
+    quantiles = 2,
+    linewidth = 0.35,
+    color = "white"
+  ) +
+  scale_fill_viridis_c(option = "plasma", name = "Max Temp") +
+  labs(
+    title = "Ridgeline Plot of Tampa Daily Maximum Temperatures",
+    subtitle = "The ridgeline layout shows the temperature distribution for each month",
+    x = "Maximum Temperature (F)",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    panel.grid.minor = element_blank(),
+    legend.position = "top"
+  )
+
+ridgeline_plot
+```
+
+The ridgeline plot makes the seasonal shift clear because the monthly distributions move toward higher temperatures during the summer. The quantile lines help mark the center of each month’s distribution.
+
+## 1E. Precipitation Visualization
+
+```{r precipitation-plot, fig.alt="Bar chart showing total monthly precipitation in Tampa during 2022, with fill showing the number of rainy days per month."}
+monthly_precip <- weather_clean %>%
+  group_by(month_label) %>%
+  summarise(
+    total_precipitation = sum(precipitation, na.rm = TRUE),
+    rainy_days = sum(precipitation > 0, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+precip_plot <- ggplot(
+  monthly_precip,
+  aes(x = month_label, y = total_precipitation, fill = rainy_days)
+) +
+  geom_col(color = "gray20", linewidth = 0.25) +
+  scale_fill_viridis_c(option = "cividis", name = "Rainy Days") +
+  labs(
+    title = "Monthly Precipitation in Tampa During 2022",
+    subtitle = "Total rainfall was not evenly distributed across the year",
+    x = "Month",
+    y = "Total Precipitation"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    panel.grid.minor = element_blank(),
+    legend.position = "top"
+  )
+
+precip_plot
+```
+
+The precipitation chart shows that rainfall was uneven across the year. Some months had more total precipitation and more rainy days, while other months were much drier.
+
+# Part 2: Option B - Concrete Strength Data
+
+```{r load-concrete-data}
+concrete_url <- "https://raw.githubusercontent.com/SkyShroom/dataviz_final_project/main/data/concrete.csv"
+
+concrete_raw <- read_csv(concrete_url, show_col_types = FALSE)
+
+concrete_clean <- concrete_raw %>%
+  rename_with(~ str_to_lower(gsub("[^A-Za-z0-9]+", "_", .x))) %>%
+  rename_with(~ str_replace_all(.x, "_$", "")) %>%
+  mutate(across(everything(), as.numeric)) %>%
+  drop_na()
+
+strength_col <- names(concrete_clean)[str_detect(names(concrete_clean), "strength|compressive")][1]
+age_col <- names(concrete_clean)[str_detect(names(concrete_clean), "^age$|age")][1]
+cement_col <- names(concrete_clean)[str_detect(names(concrete_clean), "cement")][1]
+water_col <- names(concrete_clean)[str_detect(names(concrete_clean), "water")][1]
+
+concrete_clean <- concrete_clean %>%
+  rename(
+    strength = all_of(strength_col),
+    age = all_of(age_col),
+    cement = all_of(cement_col),
+    water = all_of(water_col)
+  ) %>%
+  mutate(
+    water_cement_ratio = water / cement,
+    cement_group = case_when(
+      cement <= quantile(cement, 1/3, na.rm = TRUE) ~ "Low cement",
+      cement <= quantile(cement, 2/3, na.rm = TRUE) ~ "Medium cement",
+      TRUE ~ "High cement"
+    ),
+    cement_group = factor(
+      cement_group,
+      levels = c("Low cement", "Medium cement", "High cement")
+    )
+  )
+
+glimpse(concrete_clean)
+```
+
+The concrete dataset is useful because it connects material strength to age and mix ingredients. I cleaned the column names, renamed the main variables, and created a water-to-cement ratio to use as an additional visual feature.
+
+## 2A. Distributions of Two Continuous Variables
+
+```{r concrete-distributions, fig.alt="Faceted histograms showing the distributions of concrete strength and cement amount."}
+concrete_dist_long <- concrete_clean %>%
+  select(strength, cement) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = "value"
+  ) %>%
+  mutate(
+    variable = recode(
+      variable,
+      strength = "Concrete Strength",
+      cement = "Cement Amount"
+    )
+  )
+
+concrete_distribution_plot <- ggplot(concrete_dist_long, aes(x = value)) +
+  geom_histogram(
+    bins = 30,
+    fill = "#0072B2",
+    color = "white",
+    linewidth = 0.25
+  ) +
+  facet_wrap(~ variable, scales = "free", ncol = 1) +
+  labs(
+    title = "Distributions of Concrete Strength and Cement Amount",
+    subtitle = "The two variables have different shapes and ranges",
+    x = NULL,
+    y = "Count"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+concrete_distribution_plot
+```
+
+The distribution chart shows that concrete strength and cement amount do not follow the same shape. Strength is spread across a wide range, while cement amount is more concentrated around certain values.
+
+## 2B. Concrete Strength vs Age
+
+```{r strength-vs-age, fig.alt="Scatterplot showing concrete strength compared to age with a smoothed trend line."}
+strength_age_plot <- ggplot(concrete_clean, aes(x = age, y = strength)) +
+  geom_point(
+    alpha = 0.55,
+    size = 2.2,
+    color = "#0072B2"
+  ) +
+  geom_smooth(
+    method = "loess",
+    se = TRUE,
+    color = "black",
+    fill = "gray75",
+    linewidth = 1.2,
+    alpha = 0.3
+  ) +
+  scale_x_continuous(labels = comma) +
+  labs(
+    title = "Concrete Strength Compared to Age",
+    subtitle = "Strength generally increases with age, but the relationship is not perfectly linear",
+    x = "Age",
+    y = "Concrete Strength"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    panel.grid.minor = element_blank()
+  )
+
+strength_age_plot
+```
+
+This chart shows that concrete strength tends to increase with age, especially early on. The pattern is not perfectly linear, which makes sense because concrete strength also depends on the mix ingredients.
+
+## 2C. Scatterplot with Aesthetics
+
+```{r concrete-scatter-aesthetics, fig.alt="Scatterplot showing concrete strength versus age, with points colored and shaped by cement group and sized by water to cement ratio."}
+concrete_scatter_plot <- ggplot(
+  concrete_clean,
+  aes(
+    x = age,
+    y = strength,
+    color = cement_group,
+    shape = cement_group,
+    size = water_cement_ratio
+  )
+) +
+  geom_point(alpha = 0.75) +
+  scale_color_manual(
+    values = c(
+      "Low cement" = "#0072B2",
+      "Medium cement" = "#E69F00",
+      "High cement" = "#CC79A7"
+    )
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Low cement" = 16,
+      "Medium cement" = 17,
+      "High cement" = 15
+    )
+  ) +
+  scale_size_continuous(range = c(1.5, 5)) +
+  labs(
+    title = "Concrete Strength by Age and Cement Group",
+    subtitle = "Color and shape show cement group, while point size shows water-to-cement ratio",
+    x = "Age",
+    y = "Concrete Strength",
+    color = "Cement Group",
+    shape = "Cement Group",
+    size = "Water/Cement Ratio"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    panel.grid.minor = element_blank(),
+    legend.position = "right"
+  )
+
+concrete_scatter_plot
+```
+
+This version adds more context than a basic scatterplot. Higher cement groups are separated with both color and shape, and the water-to-cement ratio adds another part of the mix design without needing a separate chart.
+
+## 2D. Interactive Concrete Scatterplot
+
+```{r interactive-concrete-chart}
+concrete_interactive_data <- concrete_clean %>%
+  mutate(
+    hover_text = paste0(
+      "Age: ", age,
+      "<br>Strength: ", round(strength, 2),
+      "<br>Cement: ", round(cement, 2),
+      "<br>Water/Cement Ratio: ", round(water_cement_ratio, 3),
+      "<br>Cement Group: ", cement_group
+    )
+  )
+
+p_concrete <- ggplot(
+  concrete_interactive_data,
+  aes(
+    x = age,
+    y = strength,
+    color = cement_group,
+    shape = cement_group,
+    size = water_cement_ratio,
+    text = hover_text
+  )
+) +
+  geom_point(alpha = 0.75) +
+  scale_color_manual(
+    values = c(
+      "Low cement" = "#0072B2",
+      "Medium cement" = "#E69F00",
+      "High cement" = "#CC79A7"
+    )
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Low cement" = 16,
+      "Medium cement" = 17,
+      "High cement" = 15
+    )
+  ) +
+  scale_size_continuous(range = c(1.5, 5)) +
+  labs(
+    title = "Interactive Concrete Strength by Age",
+    subtitle = "Hover over each point to inspect the mix information",
+    x = "Age",
+    y = "Concrete Strength",
+    color = "Cement Group",
+    shape = "Cement Group",
+    size = "Water/Cement Ratio"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 11),
+    panel.grid.minor = element_blank()
+  )
+
+interactive_concrete_plot <- ggplotly(p_concrete, tooltip = "text") %>%
+  layout(
+    paper_bgcolor = "white",
+    plot_bgcolor = "white",
+    legend = list(orientation = "v"),
+    margin = list(t = 90, b = 70, l = 70, r = 40)
+  )
+
+interactive_concrete_plot
+```
+
+The interactive chart makes the concrete scatterplot easier to inspect because the hover text shows the exact age, strength, cement amount, and water-to-cement ratio. This keeps the main chart readable while still giving more detail when needed.
+
+```{r save-interactive-chart}
+htmlwidgets::saveWidget(
+  interactive_concrete_plot,
+  "project_03_interactive.html",
+  selfcontained = TRUE
+)
+```
+
+# Redesign: Before and After
+
+For the redesign section, I used the concrete strength scatterplot. The before version shows the relationship, but it uses weaker colors and does not explain the variables as clearly.
+
+## Before Redesign
+
+```{r before-redesign, fig.alt="Before redesign scatterplot showing concrete strength versus age with poor red and green color choices and limited labeling."}
+before_redesign_plot <- ggplot(
+  concrete_clean,
+  aes(x = age, y = strength, color = cement_group)
+) +
+  geom_point(alpha = 0.6) +
+  scale_color_manual(
+    values = c(
+      "Low cement" = "red",
+      "Medium cement" = "green",
+      "High cement" = "blue"
+    )
+  ) +
+  labs(
+    title = "Before Redesign: Concrete Strength vs Age",
+    x = "Age",
+    y = "Strength",
+    color = "Group"
+  ) +
+  theme_minimal()
+
+before_redesign_plot
+```
+
+The before chart is usable, but it is not a strong final design. The red and green color pairing is not ideal for accessibility, the labels are too basic, and the chart relies mostly on color to separate the cement groups.
+
+## After Redesign
+
+```{r after-redesign, fig.alt="After redesign scatterplot showing concrete strength versus age with colorblind-safe colors, point shapes, and clearer labels."}
+concrete_scatter_plot
+```
+
+The redesigned chart uses colorblind-friendly colors and also maps cement group to shape, so the viewer does not have to rely on color alone. The labels are clearer, and the water-to-cement ratio adds more information without making the chart too crowded.
+
+# Accessibility Notes
+
+I used colorblind-friendly palettes for the main charts and avoided relying only on color where possible. The concrete scatterplot uses both color and shape, while the weather plots use viridis-style palettes that are easier to read across different types of color vision.
+
+Each main figure also includes alt text in the R Markdown chunk so the report is more accessible when rendered.
+
+# Conclusion
+
+The Tampa weather data showed a clear seasonal temperature pattern, with daily highs increasing into the summer and falling again later in the year. The precipitation chart also showed that rainfall was uneven across the months.
+
+The concrete data showed that strength generally increases with age, but the relationship is not simple. The cement group and water-to-cement ratio help explain why samples with similar ages can still have different strength values.
+
+# AI Use Statement
+
+I used ChatGPT to help improve sentence structure, formatting, and organization in this report. The visualizations, analysis choices, and final project decisions were my own.
+
+# Save Static Figures
+
+```{r save-static-figures}
+dir.create("../figures", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../figures/project_03_weather_histograms.png",
+  plot = hist_plot,
+  width = 10,
+  height = 8,
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "../figures/project_03_weather_ridgeline.png",
+  plot = ridgeline_plot,
+  width = 10,
+  height = 7,
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "../figures/project_03_precipitation.png",
+  plot = precip_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "../figures/project_03_concrete_scatter.png",
+  plot = concrete_scatter_plot,
+  width = 10,
+  height = 7,
+  dpi = 300,
+  bg = "white"
+)
+```
